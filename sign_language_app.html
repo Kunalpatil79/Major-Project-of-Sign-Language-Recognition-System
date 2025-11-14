@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Language Recognition System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        #video {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+        
+        .canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: none; /* Hide the canvas used for grabbing frames */
+        }
+
+        #hand-landmarks {
+            /* This canvas is now for visualization (if needed) */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .result-box {
+            min-height: 120px;
+            transition: all 0.3s ease;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: red;
+            display: inline-block;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.2; }
+            100% { opacity: 1; }
+        }
+        
+        .sign-history-item {
+            transition: all 0.2s ease;
+        }
+        
+        .sign-history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <header class="bg-blue-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="flex items-center mb-4 md:mb-0">
+                    <i class="fas fa-hands-helping text-3xl mr-3"></i>
+                    <h1 class="text-2xl md:text-3xl font-bold">Sign Language Recognition System</h1>
+                </div>
+                <nav class="flex space-x-4">
+                    <a href="#" class="hover:underline">Home</a>
+                    <a href="#" class="hover:underline">About</a>
+                    <a href="#" class="hover:underline">Contact</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+        <section class="mb-12 text-center">
+            <h2 class="text-3xl font-bold text-gray-800 mb-4">Communicate Without Barriers</h2>
+            <p class="text-lg text-gray-600 max-w-3xl mx-auto">
+                Our system recognizes sign language gestures in real-time and converts them to text, 
+                helping bridge the communication gap for the deaf and hard-of-hearing community.
+            </p>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+                    <div class="bg-blue-500 text-white px-6 py-4">
+                        <h3 class="text-xl font-semibold flex items-center">
+                            <i class="fas fa-video mr-2"></i> Live Camera Feed
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div class="camera-container">
+                            <video id="video" autoplay muted playsinline></video>
+                            <div class="canvas-container">
+                                <!-- This canvas is for grabbing frames to send to the backend -->
+                                <canvas id="canvas"></canvas>
+                                <!-- This canvas is for drawing landmarks (optional) -->
+                                <canvas class="hand-landmarks" id="hand-landmarks"></canvas>
+                            </div>
+                        </div>
+                        <div class="flex justify-center mt-4 space-x-4">
+                            <button id="start-btn" class="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg font-medium transition flex items-center">
+                                <i class="fas fa-play mr-2"></i> Start
+                            </button>
+                            <button id="stop-btn" class="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-medium transition flex items-center" disabled>
+                                <i class="fas fa-stop mr-2"></i> Stop
+                            </button>
+                            <button id="clear-btn" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-medium transition flex items-center">
+                                <i class="fas fa-eraser mr-2"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                    <div class="bg-blue-500 text-white px-6 py-4">
+                        <h3 class="text-xl font-semibold flex items-center">
+                            <i class="fas fa-language mr-2"></i> Recognized Text
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <div class="result-box bg-gray-100 rounded-lg p-4 mb-4 flex items-center justify-center">
+                            <p id="result-text" class="text-2xl font-semibold text-gray-700">Your recognized signs will appear here...</p>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button id="copy-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center">
+                                <i class="fas fa-copy mr-2"></i> Copy Text
+                            </button>
+                            <button id="speak-btn" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center">
+                                <i class="fas fa-volume-up mr-2"></i> Speak Text
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-md overflow-hidden h-full">
+                    <div class="bg-blue-500 text-white px-6 py-4">
+                        <h3 class="text-xl font-semibold flex items-center">
+                            <i class="fas fa-history mr-2"></i> Sign History
+                        </h3>
+                    </div>
+                    <div class="p-4">
+                        <div class="mb-4">
+                            <input type="text" id="search-signs" placeholder="Search signs..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div id="sign-history" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+                            <!-- Sign history items will be added here dynamically -->
+                            <div class="text-center py-8 text-gray-500" id="empty-history-message">
+                                <i class="fas fa-hand-paper text-4xl mb-3"></i>
+                                <p>Your recognized signs will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ... (Rest of your HTML structure remains the same) ... -->
+    </main>
+    <!-- ... (Your footer remains the same) ... -->
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM elements
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas'); // For grabbing frames
+            const handLandmarksCanvas = document.getElementById('hand-landmarks'); // For drawing
+            const resultText = document.getElementById('result-text');
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const copyBtn = document.getElementById('copy-btn');
+            const speakBtn = document.getElementById('speak-btn');
+            const searchSigns = document.getElementById('search-signs');
+            const signHistory = document.getElementById('sign-history');
+            const emptyHistoryMessage = document.getElementById('empty-history-message');
+            
+            // Variables
+            let stream = null;
+            let isRecognizing = false;
+            let recognitionHistory = [];
+            let animationFrameId = null;
+            let ws = null; // WebSocket connection
+            let lastRecognizedSign = "";
+
+            const ctx = canvas.getContext('2d');
+            const handCtx = handLandmarksCanvas.getContext('2d');
+
+            // Event listeners
+            startBtn.addEventListener('click', startRecognition);
+            stopBtn.addEventListener('click', stopRecognition);
+            clearBtn.addEventListener('click', clearResults);
+            copyBtn.addEventListener('click', copyText);
+            speakBtn.addEventListener('click', speakText);
+            searchSigns.addEventListener('input', filterSignHistory);
+            
+            // Initialize camera
+            async function initCamera() {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        // Set canvas dimensions once video is loaded
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        handLandmarksCanvas.width = video.videoWidth;
+                        handLandmarksCanvas.height = video.videoHeight;
+                    };
+                    startBtn.disabled = false;
+                } catch (err)
+ {
+                    console.error('Error accessing camera:', err);
+                    resultText.textContent = 'Error: Could not access camera. Please allow camera permissions.';
+                    resultText.classList.add('text-red-500');
+                    startBtn.disabled = true;
+                }
+            }
+            
+            // Start recognition
+            async function startRecognition() {
+                if (!stream) return;
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                resultText.innerHTML = '<span class="dot"></span>Recognizing...';
+                resultText.classList.remove('text-red-500');
+
+                // Connect to WebSocket server
+                // This connects to the Python "Brain"
+                ws = new WebSocket("ws://localhost:8000/ws");
+
+                ws.onopen = () => {
+                    console.log("WebSocket connected!");
+                    isRecognizing = true;
+                    processVideoFrame(); // Start sending frames
+                };
+
+                ws.onmessage = (event) => {
+                    // This is where we get the answer back from the Python "Brain"
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.prediction) {
+                        const sign = data.prediction;
+                        
+                        // Update result text only if the sign is new
+                        if (sign !== lastRecognizedSign) {
+                            resultText.textContent = sign;
+                            lastRecognizedSign = sign;
+
+                            // Add to history only if it's not "None" and different from the last
+                            if (sign !== "None" && (recognitionHistory.length === 0 || recognitionHistory[0].sign !== sign)) {
+                                addToHistory(sign);
+                            }
+                        }
+                    }
+
+                    // The Python "Brain" also sends back the hand drawing (landmarks)
+                    drawLandmarks(data.landmarks);
+                };
+
+                ws.onerror = (error) => {
+                    console.error("WebSocket error:", error);
+                    resultText.textContent = 'Error: Could not connect to Python "Brain". Is it running?';
+                    resultText.classList.add('text-red-500');
+                    stopRecognition();
+                };
+
+                ws.onclose = () => {
+                    console.log("WebSocket disconnected.");
+                    if (isRecognizing) {
+                        stopRecognition();
+                    }
+                };
+            }
+            
+            // Process video frame and send to backend
+            function processVideoFrame() {
+                if (!isRecognizing || !ws || ws.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                
+                // Draw video frame to the hidden canvas
+                ctx.save();
+                ctx.scale(-1, 1); // Match the mirrored video
+                ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+                ctx.restore();
+
+                // Get image data as JPEG
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // 70% quality
+                
+                // Send the frame to the backend
+                // Send only the base64 part
+                ws.send(dataUrl.split(',')[1]); 
+                
+                // Continue processing frames
+                animationFrameId = requestAnimationFrame(processVideoFrame);
+            }
+            
+            // Draw landmarks (received from backend)
+            function drawLandmarks(landmarks) {
+                handCtx.clearRect(0, 0, handLandmarksCanvas.width, handLandmarksCanvas.height);
+
+                if (!landmarks) return;
+
+                handCtx.fillStyle = '#FF0000'; // Red dots
+                handCtx.strokeStyle = '#00FF00'; // Green lines
+                handCtx.lineWidth = 2;
+
+                // This logic assumes `landmarks` is an array of hand objects,
+                // but our server sends a single hand's landmarks as one array.
+                // Let's adjust for the server's structure: `landmarks` is an array of 21 {x,y,z} points.
+                
+                // Define the connections for a single hand
+                const connections = [
+                    [0, 1, 2, 3, 4],    // Thumb
+                    [0, 5, 6, 7, 8],    // Index
+                    [5, 9, 10, 11, 12], // Middle
+                    [9, 13, 14, 15, 16], // Ring
+                    [13, 17, 18, 19, 20],// Pinky
+                    [0, 17]             // Wrist to Pinky base
+                ];
+                
+                for (const connection of connections) {
+                    for (let i = 0; i < connection.length - 1; i++) {
+                        const startIdx = connection[i];
+                        const endIdx = connection[i+1];
+                        
+                        if (landmarks[startIdx] && landmarks[endIdx]) {
+                            const start = landmarks[startIdx];
+                            const end = landmarks[endIdx];
+                            
+                            handCtx.beginPath();
+                            // We must scale the normalized x/y coordinates to the canvas size
+                            handCtx.moveTo(start.x * handLandmarksCanvas.width, start.y * handLandmarksCanvas.height);
+                            handCtx.lineTo(end.x * handLandmarksCanvas.width, end.y * handLandmarksCanvas.height);
+                            handCtx.stroke();
+                        }
+                    }
+                }
+
+                // Draw landmark points
+                for (const point of landmarks) {
+                    if (point) {
+                        handCtx.beginPath();
+                        handCtx.arc(point.x * handLandmarksCanvas.width, point.y * handLandmarksCanvas.height, 5, 0, 2 * Math.PI);
+                        handCtx.fill();
+                    }
+                }
+            }
+            
+            // Stop recognition
+            function stopRecognition() {
+                isRecognizing = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+
+                if (ws) {
+                    ws.close();
+                    ws = null;
+                }
+                
+                if (resultText.textContent.includes('Recognizing...')) {
+                    resultText.textContent = 'Recognition stopped. Click Start to begin again.';
+                }
+                lastRecognizedSign = ""; // Reset last sign
+                handCtx.clearRect(0, 0, handLandmarksCanvas.width, handLandmarksCanvas.height); // Clear landmarks
+            }
+            
+            // Clear results
+            function clearResults() {
+                resultText.textContent = 'Your recognized signs will appear here...';
+                recognitionHistory = [];
+                signHistory.innerHTML = '';
+                emptyHistoryMessage.classList.remove('hidden');
+                handCtx.clearRect(0, 0, handLandmarksCanvas.width, handLandmarksCanvas.height);
+                lastRecognizedSign = "";
+            }
+            
+            // Copy text to clipboard
+            function copyText() {
+                let textToCopy = lastRecognizedSign;
+                if (!textToCopy || textToCopy.includes('will appear here') || textToCopy.includes('Recognizing')) {
+                    return;
+                }
+                
+                // This way of copying works better in different browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = textToCopy;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    const originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalText;
+                    }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy text:', err);
+                }
+                document.body.removeChild(textArea);
+            }
+            
+            // Speak text
+            function speakText() {
+                let textToSpeak = lastRecognizedSign;
+                if (!textToSpeak || textToSpeak.includes('will appear here') || textToSpeak.includes('Recognizing')) {
+                    return;
+                }
+                
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                speechSynthesis.speak(utterance);
+                
+                const originalText = speakBtn.innerHTML;
+                speakBtn.innerHTML = '<i class="fas fa-volume-up mr-2"></i> Speaking...';
+                
+                utterance.onend = () => {
+                    speakBtn.innerHTML = originalText;
+                };
+            }
+            
+            // Add recognized sign to history
+            function addToHistory(sign) {
+                const now = new Date();
+                const timestamp = now.toLocaleTimeString();
+                
+                recognitionHistory.unshift({
+                    sign,
+                    timestamp
+                });
+                
+                // Update history UI
+                updateSignHistory();
+                
+                // Hide empty message if it's the first item
+                if (recognitionHistory.length === 1) {
+                    emptyHistoryMessage.classList.add('hidden');
+                }
+            }
+            
+            // Update sign history UI
+            function updateSignHistory() {
+                const searchTerm = searchSigns.value.toLowerCase();
+                const filteredHistory = recognitionHistory.filter(item => 
+                    item.sign.toLowerCase().includes(searchTerm)
+                );
+                
+                if (filteredHistory.length === 0) {
+                    const message = searchTerm ? 'No matching signs found' : '';
+                    if (!searchTerm) {
+                        emptyHistoryMessage.classList.remove('hidden');
+                        signHistory.innerHTML = ''; // Clear results if search is cleared
+                    } else {
+                        emptyHistoryMessage.classList.add('hidden');
+                        signHistory.innerHTML = `
+                            <div class="text-center py-8 text-gray-500">
+                                <i class="fas fa-search text-4xl mb-3"></i>
+                                <p>${message}</p>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+                
+                emptyHistoryMessage.classList.add('hidden');
+                signHistory.innerHTML = filteredHistory.slice(0, 20).map(item => `
+                    <div class="sign-history-item bg-white border border-gray-200 rounded-lg p-3 shadow-sm cursor-pointer hover:bg-blue-50" data-sign="${item.sign}">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-blue-600">${item.sign}</span>
+                            <span class="text-xs text-gray-500">${item.timestamp}</span>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // Add click event to history items
+                document.querySelectorAll('.sign-history-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const sign = item.getAttribute('data-sign');
+                        resultText.textContent = sign;
+                        lastRecognizedSign = sign;
+                    });
+                });
+            }
+            
+            // Filter sign history (this now just calls updateSignHistory)
+            function filterSignHistory() {
+                updateSignHistory();
+            }
+            
+            // Initialize the app
+            initCamera();
+            
+            // Clean up on page unload
+            window.addEventListener('beforeunload', () => {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                if (ws) {
+                    ws.close();
+                }
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
